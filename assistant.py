@@ -1,4 +1,4 @@
-import sys
+import argparse
 from pathlib import Path
 
 
@@ -32,34 +32,30 @@ def show_help():
         """)
 
 def main():
-    args = sys.argv
+    parser = argparse.ArgumentParser(
+        description="A simple terminal assistant"
+    )
 
-    if len(args)<2 or args[1] in ("-h","--help"):
-        show_help()
-        return
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    command = args[1]
+    ask_parser = subparsers.add_parser(name="ask", help="Ask a question")
+    ask_parser.add_argument("question")
 
-    match command:
+    file_parser = subparsers.add_parser(name="create-file", help="Create a text file")
+    file_parser.add_argument("filename")
+    file_parser.add_argument("content")
+
+    args = parser.parse_args()
+
+    match args.command:
         case "ask":
-            if len(args) < 3:
-                print("Error: question is required.")
-                return
-            
-            question = " ".join(args[2:])
-            print(answer_question(question))
+            print(answer_question(args.question))
             
         case "create-file":
-            if len(args) < 4:
-                print("Error: filename and content are required.")
-                return
-
-            filename = args[2]
-            content = " ".join(args[3:])
-            create_file(filename, content)
+            create_file(args.filename, args.content)
 
         case _:
-            print(f"Unknown command: {command}")
+            print(f"Unknown command: {args.command}")
             show_help()
 
 
