@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "terminal-assistant"
+version = "0.1.0"
+description = "A simple terminal assistant"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+assistant = "terminal_assistant.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
