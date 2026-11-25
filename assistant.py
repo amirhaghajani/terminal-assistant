@@ -12,25 +12,6 @@ def create_file(filename:str, content:str)->None:
         f.write(content+"\n")
     print(f"file created: {path}")
 
-def show_help():
-    print("""
-        Terminal Assistant
-
-        Usage:
-            python3 assistant.py <command> [arguments]
-
-        Commands:
-            ask <question>                  Ask a question
-            create-file <filename> <text>   Create a text file
-
-        Options:
-            -h, --help                      Show this help message
-
-        Examples:
-            python3 assistant.py ask "What is Python?"
-            python3 assistant.py create-file notes.txt "Hello"
-        """)
-
 def main():
     parser = argparse.ArgumentParser(
         description="A simple terminal assistant"
@@ -56,7 +37,6 @@ def main():
 
         case _:
             print(f"Unknown command: {args.command}")
-            show_help()
 
 
 if __name__ == "__main__":
