@@ -1,13 +1,15 @@
 # Terminal Assistant
 
-A small Python project that starts with simple functions and gradually evolves into a command-line assistant.
+A small Python project that gradually evolves into a command-line assistant.
 
-This is the first stage of the project: a basic Python script.
+This is stage 2: building a CLI manually using Python's `sys.argv`.
 
-## Current Features
+## Features
 
-- `answer_question()`: Receives a question and returns a placeholder response.
-- `create_file()`: Creates a text file or appends content to an existing file.
+- `ask`: Accepts a question and returns a placeholder response.
+- `create-file`: Creates a text file or appends content to an existing file.
+- `--help`: Displays available commands and usage instructions.
+- Manual argument validation and error handling.
 
 ## Requirements
 
@@ -15,15 +17,32 @@ This is the first stage of the project: a basic Python script.
 
 ## Run the application
 
+Show available commands:
+
 ```bash
-python3 assistant.py
+python3 assistant.py --help
 ```
 
-Example output:
+Ask a question:
 
-```text
-I received your question: What is Python?
+```bash
+python3 assistant.py ask "What is Python?"
 ```
+
+Create a file:
+
+```bash
+python3 assistant.py create-file notes.txt "Hello world"
+```
+
+## How it works
+
+The application uses:
+
+- `sys.argv` to read command-line arguments.
+- `match/case` to dispatch commands.
+- Manual checks to validate required arguments.
+- `pathlib.Path` to work with files.
 
 ## Project Structure
 
@@ -35,11 +54,16 @@ terminal-assistant/
 
 ## What you'll learn
 
-- Defining Python functions
-- Using function parameters and return values
-- Working with files using `pathlib.Path`
-- Using the `__name__ == "__main__"` entry-point guard
+- Reading command-line arguments with `sys.argv`
+- Building a CLI without external libraries
+- Parsing commands and arguments manually
+- Validating user input
+- Handling basic CLI errors
+
+## Limitations
+
+Argument parsing and validation are implemented manually. As the application grows, this approach becomes harder to maintain.
 
 ## What's next?
 
-In the next stage, we'll turn this simple script into a command-line application that accepts user input through terminal arguments.
+In stage 3, we'll replace manual argument parsing with Python's built-in `argparse` library.
