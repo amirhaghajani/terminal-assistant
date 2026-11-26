@@ -1,73 +1,95 @@
 # Terminal Assistant
 
-A small Python project that gradually evolves into a command-line assistant.
+A small Python project that gradually evolves into an installable command-line application.
 
-This is stage 3: replacing manual argument parsing with Python's built-in `argparse` library.
+This is stage 4: converting the application into a Python package and creating an installable CLI command.
 
-## Features
+## What's new?
 
-- `ask`: Accepts a question and returns a placeholder response.
-- `create-file`: Creates a text file or appends content to an existing file.
-- Automatic help generation.
-- Automatic validation of required command arguments.
-- Command dispatch using `match/case`.
-
-## Requirements
-
-- Python 3.10 or newer
-
-## Run the application
-
-Show available commands:
-
-```bash
-python3 assistant.py --help
-```
-
-Ask a question:
-
-```bash
-python3 assistant.py ask "What is Python?"
-```
-
-Create a file:
-
-```bash
-python3 assistant.py create-file notes.txt "Hello world"
-```
-
-## How it works
-
-The application uses:
-
-- `argparse.ArgumentParser` to define the CLI.
-- Subparsers to define commands such as `ask` and `create-file`.
-- `add_argument()` to declare required arguments.
-- `parse_args()` to parse and validate user input.
-- `match/case` to dispatch the parsed command.
+- Organized source code using the `src/` layout.
+- Created a Python package named `terminal_assistant`.
+- Added `pyproject.toml` for package configuration and metadata.
+- Configured setuptools as the build backend.
+- Registered the `assistant` terminal command.
 
 ## Project Structure
 
 ```text
 terminal-assistant/
-├── assistant.py
-└── README.md
+├── pyproject.toml
+├── README.md
+└── src/
+    └── terminal_assistant/
+        ├── __init__.py
+        └── cli.py
 ```
 
-## What you'll learn
+## Requirements
 
-- Defining CLI commands with `argparse`
-- Using subparsers
-- Declaring positional arguments
-- Automatic help and argument validation
-- Separating argument parsing from application logic
+- Python 3.10 or newer
 
-## Improvement over stage 2
+## Development setup
 
-In stage 2, we manually inspected `sys.argv`, checked argument counts, and generated help text ourselves.
+Create and activate a virtual environment:
 
-Now `argparse` handles those responsibilities, making the CLI simpler and easier to extend.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+Install the project:
+
+```bash
+python -m pip install .
+```
+
+## Using the CLI
+
+Show available commands:
+
+```bash
+assistant --help
+```
+
+Ask a question:
+
+```bash
+assistant ask "What is an AI agent?"
+```
+
+Create a file:
+
+```bash
+assistant create-file notes.txt "Hello world"
+```
+
+## Build distributions
+
+Install the build frontend:
+
+```bash
+python -m pip install build
+```
+
+Build the package:
+
+```bash
+python -m build
+```
+
+This creates two distribution formats in `dist/`:
+
+- **Wheel (`.whl`)**: a built distribution that can be installed directly.
+- **Source distribution (`.tar.gz`)**: the source package from which a distribution can be built.
+
+## Important packaging concepts
+
+- `pyproject.toml`: project metadata and build configuration.
+- `setuptools`: the build backend.
+- `build`: the frontend that invokes the backend.
+- `pip`: the package installer.
+- `project.scripts`: maps the `assistant` command to `terminal_assistant.cli:main`.
 
 ## What's next?
 
-In stage 4, we'll organize the application as a Python package and make it installable as a command-line tool.
+In stage 5, we'll explore package versioning and upgrade an already installed CLI application.
