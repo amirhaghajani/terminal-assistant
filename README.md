@@ -2,14 +2,15 @@
 
 A small Python project that gradually evolves into a command-line assistant.
 
-This is stage 2: building a CLI manually using Python's `sys.argv`.
+This is stage 3: replacing manual argument parsing with Python's built-in `argparse` library.
 
 ## Features
 
 - `ask`: Accepts a question and returns a placeholder response.
 - `create-file`: Creates a text file or appends content to an existing file.
-- `--help`: Displays available commands and usage instructions.
-- Manual argument validation and error handling.
+- Automatic help generation.
+- Automatic validation of required command arguments.
+- Command dispatch using `match/case`.
 
 ## Requirements
 
@@ -39,10 +40,11 @@ python3 assistant.py create-file notes.txt "Hello world"
 
 The application uses:
 
-- `sys.argv` to read command-line arguments.
-- `match/case` to dispatch commands.
-- Manual checks to validate required arguments.
-- `pathlib.Path` to work with files.
+- `argparse.ArgumentParser` to define the CLI.
+- Subparsers to define commands such as `ask` and `create-file`.
+- `add_argument()` to declare required arguments.
+- `parse_args()` to parse and validate user input.
+- `match/case` to dispatch the parsed command.
 
 ## Project Structure
 
@@ -54,16 +56,18 @@ terminal-assistant/
 
 ## What you'll learn
 
-- Reading command-line arguments with `sys.argv`
-- Building a CLI without external libraries
-- Parsing commands and arguments manually
-- Validating user input
-- Handling basic CLI errors
+- Defining CLI commands with `argparse`
+- Using subparsers
+- Declaring positional arguments
+- Automatic help and argument validation
+- Separating argument parsing from application logic
 
-## Limitations
+## Improvement over stage 2
 
-Argument parsing and validation are implemented manually. As the application grows, this approach becomes harder to maintain.
+In stage 2, we manually inspected `sys.argv`, checked argument counts, and generated help text ourselves.
+
+Now `argparse` handles those responsibilities, making the CLI simpler and easier to extend.
 
 ## What's next?
 
-In stage 3, we'll replace manual argument parsing with Python's built-in `argparse` library.
+In stage 4, we'll organize the application as a Python package and make it installable as a command-line tool.
