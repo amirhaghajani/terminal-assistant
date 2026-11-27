@@ -1,14 +1,16 @@
-# Stage 7 — Building a CLI with Typer
+# Stage 8 — Connecting a Python CLI to Ollama
 
-In the previous stages, we built a command-line application using plain Python, manual argument parsing, and `argparse`. We also explored Python functions, function references, decorators, and function registration.
+In the previous stages, we built a command-line application using plain Python, `sys.argv`, `argparse`, Python packaging, and Typer.
 
-In this stage, we'll use **Typer** to build the CLI.
+Our CLI could accept commands, but it didn't actually use an AI model.
 
-Our goal is to achieve the same functionality with less boilerplate and a more Pythonic approach.
+In this stage, we'll connect our terminal assistant to a local Large Language Model (LLM) running through **Ollama**.
+
+Our goal is to send a question from the terminal to Ollama and display the model's response.
 
 ## 1. What are we building?
 
-Our terminal assistant supports these commands:
+Our CLI supports these commands:
 
 ```bash
 assistant --help
@@ -18,407 +20,439 @@ assistant ask "What is RAG?"
 assistant create-file notes.txt "Hello from Typer"
 ```
 
-Expected output:
+Now, instead of returning a hardcoded response, the `ask` command sends the question to a real LLM.
 
-```text
-I received your question: What is RAG?
+For example:
+
+```bash
+assistant ask "What is dependency injection in Python?"
 ```
 
-For file creation:
+The assistant sends the question to Ollama and displays the model's answer.
+
+## 2. Understanding the architecture
+
+Our application has three main responsibilities:
+
+1. **CLI:** Receives commands and arguments from the terminal.
+2. **LLM client:** Communicates with Ollama.
+3. **Ollama:** Runs the local language model and generates responses.
+
+The flow looks like this:
 
 ```text
-file created: notes.txt
+Terminal
+   |
+   v
+Typer CLI
+   |
+   v
+answer_question()
+   |
+   v
+ask_ollama()
+   |
+   v
+Ollama HTTP API
+   |
+   v
+Local LLM
+   |
+   v
+Response
 ```
 
-## 2. Why Typer?
+We keep the Ollama communication separate from the CLI implementation. This makes it easier to replace or extend the LLM integration later.
 
-Before Typer, we used `argparse` to define commands and their arguments.
+## 3. Understanding Ollama's HTTP API
+
+Ollama provides an HTTP API that allows other applications to communicate with locally running models.
+
+For this project, we use the chat endpoint:
+
+```text
+POST /api/chat
+```
+
+Our application sends a JSON request containing:
+
+- The model name.
+- The conversation messages.
+- The streaming configuration.
+
+For example:
+
+```json
+{
+    "model": "qwen3:14b",
+    "messages": [
+        {
+            "role": "user",
+            "content": "What is RAG?"
+        }
+    ],
+    "stream": false
+}
+```
+
+We set `stream` to `false` because we want to receive the complete response in one HTTP response rather than receiving it in multiple chunks.
+
+You can test the API independently with `curl`:
+
+```bash
+curl http://YOUR_OLLAMA_HOST:11434/api/chat \
+  -d '{
+    "model": "qwen3:14b",
+    "messages": [
+      {"role": "user", "content": "What is RAG?"}
+    ],
+    "stream": false
+  }'
+```
+
+Replace `YOUR_OLLAMA_HOST` with the address where your Ollama server is accessible.
+
+## 4. Why do we use Python's standard library?
+
+We could use an HTTP library such as `requests` or an Ollama-specific Python package.
+
+However, for this learning stage, we'll use Python's standard library for HTTP communication and JSON processing.
+
+We need three modules:
+
+```python
+import json
+from urllib.request import Request, urlopen
+```
+
+- `json` converts Python dictionaries into JSON and parses JSON responses.
+- `Request` represents an HTTP request.
+- `urlopen` sends the request and returns the HTTP response.
+
+This lets us understand what's happening underneath before introducing another dependency.
+
+We'll use one small external package, `python-dotenv`, to manage environment-based configuration.
+
+## 5. Configuring the Ollama endpoint
+
+We don't want to hardcode a machine-specific URL in our Python source code.
+
+Instead, we'll use an environment variable named `OLLAMA_API_URL`.
+
+First, install the project dependencies:
+
+```bash
+uv sync
+```
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and configure the Ollama API URL:
+
+```env
+OLLAMA_API_URL=http://localhost:11434/api/chat
+```
+
+If Ollama runs on another machine, replace `localhost` with the address where that server is accessible.
+
+For example, when running the Python application inside WSL and Ollama on Windows, you may need to use the Windows host's accessible WSL network address.
+
+Our project includes two environment files:
+
+- `.env.example` is a configuration template committed to Git.
+- `.env` contains your actual local configuration and is excluded from Git through `.gitignore`.
+
+This allows different developers to use different Ollama endpoints without changing the application source code.
+
+## 6. Implementing the Ollama client
+
+Create a new file:
+
+```text
+src/terminal_assistant/llm.py
+```
+
+Our implementation:
+
+```python
+import json
+import os
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
+OLLAMA_URL = os.getenv(
+    "OLLAMA_API_URL",
+    "http://localhost:11434/api/chat"
+)
+MODEL = "qwen3:14b"
+
+
+class OllamaError(Exception):
+    """Raised when communication with Ollama fails."""
+
+
+def ask_ollama(prompt: str) -> str:
+    payload = {
+        "model": MODEL,
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "stream": False
+    }
+
+    request = Request(
+        OLLAMA_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+
+    try:
+        with urlopen(request, timeout=120) as response:
+            result = json.loads(response.read().decode("utf-8"))
+
+        return result["message"]["content"]
+
+    except HTTPError as error:
+        raise OllamaError(
+            f"Ollama returned HTTP {error.code}: {error.reason}"
+        ) from error
+
+    except (URLError, TimeoutError) as error:
+        raise OllamaError(
+            f"Could not connect to Ollama: {error}"
+        ) from error
+
+    except (json.JSONDecodeError, KeyError, TypeError) as error:
+        raise OllamaError(
+            f"Invalid response from Ollama: {error}"
+        ) from error
+```
+
+**Important:** We load the Ollama endpoint from an environment variable instead of hardcoding it. `load_dotenv()` loads variables from the `.env` file, and `os.getenv()` retrieves the configured URL. If the variable is not defined, the application uses localhost as a fallback.
+
+### Understanding the implementation
+
+**Loading the configuration**
+
+```python
+load_dotenv()
+
+OLLAMA_URL = os.getenv(
+    "OLLAMA_API_URL",
+    "http://localhost:11434/api/chat"
+)
+```
+
+There are two important functions here:
+
+- `load_dotenv()` reads the `.env` file and loads its variables into the process environment.
+- `os.getenv()` retrieves an environment variable.
+
+The second argument to `os.getenv()` is a default value. If `OLLAMA_API_URL` isn't defined, the application uses the localhost URL.
+
+This separates application configuration from application code.
+
+**Building the payload**
+
+```python
+payload = {
+    "model": MODEL,
+    "messages": [
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ],
+    "stream": False
+}
+```
+
+This is an ordinary Python dictionary. We later convert it into JSON.
+
+**Creating the HTTP request**
+
+```python
+request = Request(
+    OLLAMA_URL,
+    data=json.dumps(payload).encode("utf-8"),
+    headers={"Content-Type": "application/json"},
+    method="POST"
+)
+```
+
+There are two important conversions here:
+
+1. `json.dumps(payload)` converts the Python dictionary into a JSON string.
+2. `.encode("utf-8")` converts that string into bytes.
+
+The HTTP request body is sent as bytes.
+
+We also specify the content type so the server knows that the request body contains JSON.
+
+**Sending the request**
+
+```python
+with urlopen(request, timeout=120) as response:
+    result = json.loads(response.read().decode("utf-8"))
+```
+
+The process is:
+
+1. `urlopen()` sends the HTTP request.
+2. `response.read()` reads the response body as bytes.
+3. `.decode("utf-8")` converts those bytes into a string.
+4. `json.loads()` converts the JSON string into a Python object.
+
+Finally:
+
+```python
+return result["message"]["content"]
+```
+
+We extract the actual text generated by the model.
+
+## 7. Understanding custom exceptions
+
+We introduced our own exception:
+
+```python
+class OllamaError(Exception):
+    """Raised when communication with Ollama fails."""
+```
+
+Why?
+
+Because our CLI shouldn't need to understand the details of HTTP errors, URL errors, or invalid JSON.
+
+The LLM module handles those technical details and raises one application-specific exception: `OllamaError`.
 
 For example:
 
 ```python
-ask_parser = subparsers.add_parser(
-    name="ask",
-    help="Ask a question"
-)
-
-ask_parser.add_argument("question")
+except (URLError, TimeoutError) as error:
+    raise OllamaError(
+        f"Could not connect to Ollama: {error}"
+    ) from error
 ```
 
-We had to explicitly define the command and its arguments.
+The `from error` part is called **exception chaining**.
 
-With Typer, we can express the same information using Python functions and decorators:
+It preserves the original exception as the cause of the new exception. This is useful when debugging because we don't lose the underlying error.
+
+## 8. Connecting the LLM client to Typer
+
+Now we modify `cli.py`.
+
+First, import our client:
 
 ```python
-@app.command("ask")
-def ask(question: str):
-    print(f"I received your question: {question}")
+from terminal_assistant.llm import OllamaError, ask_ollama
 ```
 
-Typer uses the function name, parameters, and type hints to construct the command-line interface.
-
-## 3. Installing Typer
-
-Add Typer to the project's dependencies in `pyproject.toml`:
-
-```toml
-[project]
-dependencies = [
-    "typer>=0.29.2,<1.0.0"
-]
-```
-
-Install the project in editable mode:
-
-```bash
-python -m pip install -e .
-```
-
-Editable installation means that changes to our Python source files are immediately available without reinstalling the package.
-
-## 4. Understanding the application
-
-Our application is defined in:
-
-`src/terminal_assistant/cli.py`
-
-```python
-from pathlib import Path
-import typer
-
-app = typer.Typer(
-    help="A simple terminal assistant",
-    context_settings={"help_option_names": ["-h", "--help"]}
-)
-
-
-def answer_question(question: str) -> str:
-    return f"I received your question: {question}"
-
-
-@app.command("ask")
-def ask(question: str):
-    print(answer_question(question))
-
-
-@app.command("create-file")
-def create_file(filename: str, content: str) -> None:
-    path = Path(filename)
-
-    with path.open(mode="a", encoding="utf-8") as f:
-        f.write(content + "\n")
-
-    print(f"file created: {path}")
-
-
-def main():
-    app()
-
-
-if __name__ == "__main__":
-    main()
-```
-
-Let's understand the important parts.
-
-### Creating the Typer application
-
-```python
-app = typer.Typer(
-    help="A simple terminal assistant"
-)
-```
-
-This creates our CLI application.
-
-We use `app` to register commands.
-
-### Registering a command
-
-```python
-@app.command("ask")
-def ask(question: str):
-    print(answer_question(question))
-```
-
-The decorator registers the `ask` function as a CLI command.
-
-The command name is explicitly specified as `"ask"`.
-
-Typer reads the function signature and understands that `question` is a required string argument.
-
-We can now execute:
-
-```bash
-assistant ask "What is RAG?"
-```
-
-### Understanding the decorator
-
-We previously learned that:
-
-```python
-@app.command()
-def ask(question: str):
-    ...
-```
-
-is conceptually similar to:
-
-```python
-def ask(question: str):
-    ...
-
-ask = app.command()(ask)
-```
-
-`app.command()` returns a decorator. That decorator receives the `ask` function and registers it with the application.
-
-The actual Typer implementation is more sophisticated, but this model helps us understand the registration mechanism.
-
-### Separating business logic from CLI interaction
-
-Notice that we have two functions:
+Then replace our previous hardcoded implementation:
 
 ```python
 def answer_question(question: str) -> str:
     return f"I received your question: {question}"
 ```
 
-And:
+With:
+
+```python
+def answer_question(question: str) -> str:
+    return ask_ollama(question)
+```
+
+The CLI command handles errors:
 
 ```python
 @app.command("ask")
 def ask(question: str):
-    print(answer_question(question))
+    try:
+        print(answer_question(question))
+    except OllamaError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=1)
 ```
 
-`answer_question` contains business logic. It returns a string.
+Notice the separation:
 
-`ask` handles the CLI interaction and displays the result.
+- `ask_ollama()` handles communication with Ollama.
+- `answer_question()` represents our application's question-answering logic.
+- `ask()` handles terminal interaction and CLI errors.
 
-This separation is useful because we can later replace the placeholder implementation with an actual LLM call without coupling our business logic to Typer.
+The CLI doesn't need to know how HTTP communication works.
 
-## 5. How Typer interprets function parameters
+## 9. Testing the application
 
-One of Typer's most useful features is that it uses Python type hints and default values to define CLI arguments and options.
-
-Consider:
-
-```python
-@app.command()
-def calculate(
-    price: float,
-    quantity: int,
-    discount: bool = False
-):
-    print(price, quantity, discount)
-```
-
-Typer interprets the parameters as follows:
-
-| Python parameter | CLI behavior |
-|---|---|
-| `price: float` | Required positional argument |
-| `quantity: int` | Required positional argument |
-| `discount: bool = False` | Optional Boolean flag |
-
-Without the discount flag:
-
-```bash
-assistant calculate 12.5 3
-```
-
-Output:
-
-```text
-12.5 3 False
-```
-
-With the discount flag:
-
-```bash
-assistant calculate 12.5 3 --discount
-```
-
-Output:
-
-```text
-12.5 3 True
-```
-
-### Positional arguments and options
-
-Consider:
-
-```python
-def download(url: str, output: str = "download.zip"):
-    print(url, output)
-```
-
-Because `url` has no default value, Typer treats it as a required positional argument.
-
-Because `output` has a default value, Typer treats it as an option.
-
-These commands are valid:
-
-```bash
-assistant download https://example.com
-
-assistant download https://example.com --output file.zip
-```
-
-By default, the option name comes from the parameter name. For example, `has_discount` becomes `--has-discount`.
-
-You can also explicitly configure arguments and options using `typer.Argument()` and `typer.Option()`.
-
-## 6. Automatic type conversion and validation
-
-Type hints are not just documentation.
-
-Consider:
-
-```python
-def calculate(price: float, quantity: int):
-    print(price * quantity)
-```
-
-When we execute:
-
-```bash
-assistant calculate 12.5 3
-```
-
-Typer converts the terminal input into the appropriate Python types:
-
-```python
-price = 12.5       # float
-quantity = 3       # int
-```
-
-But if we execute:
-
-```bash
-assistant calculate 12.5 three
-```
-
-Typer rejects the invalid integer input before calling our function.
-
-This means we don't have to manually convert every command-line argument or write basic type-validation logic ourselves.
-
-## 7. Understanding Click
-
-Typer is built on Click's command-line infrastructure.
-
-Click provides functionality for:
-
-- Command-line argument parsing
-- Commands and groups
-- Options and arguments
-- Help generation
-- Shell completion
-
-Typer provides a more convenient Python interface by using function signatures, decorators, and type hints.
-
-Instead of explicitly declaring every CLI argument, we can often describe our command using an ordinary Python function.
-
-One detail about our installed version: Typer 0.29.2 vendors Click internally.
-
-## 8. Customizing help options
-
-By default, our previous `argparse` implementation supported both:
-
-```bash
-assistant -h
-assistant --help
-```
-
-Our Typer application initially supported `--help`, but not `-h`.
-
-We configured both options using:
-
-```python
-app = typer.Typer(
-    help="A simple terminal assistant",
-    context_settings={
-        "help_option_names": ["-h", "--help"]
-    }
-)
-```
-
-Now both commands work.
-
-## 9. Why do we keep `main()`?
-
-Our `pyproject.toml` contains:
-
-```toml
-[project.scripts]
-assistant = "terminal_assistant.cli:main"
-```
-
-This tells the Python packaging system to create an executable command named `assistant` that calls the `main` function.
-
-Our entry point is:
-
-```python
-def main():
-    app()
-```
-
-We could call `app()` directly, but keeping `main()` preserves the existing package entry point.
-
-## 10. Running the application
-
-Install the project:
-
-```bash
-python -m pip install -e .
-```
-
-Display application help:
-
-```bash
-assistant --help
-assistant -h
-```
-
-Display command help:
-
-```bash
-assistant ask --help
-assistant create-file --help
-```
+First, make sure Ollama is running and accessible.
 
 Ask a question:
 
 ```bash
-assistant ask "What is RAG?"
+assistant ask "What is Python?"
 ```
 
-Create a file:
+The application should display the actual model response.
+
+We should also test the failure path.
+
+Stop Ollama and run:
 
 ```bash
-assistant create-file notes.txt "Hello from Typer"
+assistant ask "What is Python?"
 ```
 
-## 11. What did we learn?
+Expected output will look similar to:
+
+```text
+Error: Could not connect to Ollama: <urlopen error ...>
+```
+
+Check the exit code:
+
+```bash
+echo $?
+```
+
+Expected result:
+
+```text
+1
+```
+
+This confirms that our CLI reports a failed operation correctly instead of silently succeeding.
+
+## 10. What did we learn?
 
 In this stage, we learned:
 
-- Creating a Typer application.
-- Registering commands with decorators.
-- Understanding how `@app.command()` works.
-- Using Python function parameters as CLI arguments.
-- Understanding positional arguments and options.
-- Using Boolean parameters as CLI flags.
-- Automatic type conversion and validation.
-- The relationship between Typer and Click.
-- Customizing CLI help options.
-- Preserving our Python package entry point.
+- How to communicate with Ollama through its HTTP API.
+- How to construct HTTP POST requests using Python's standard library.
+- How to serialize and deserialize JSON.
+- How to use environment variables for application configuration.
+- How to use `python-dotenv` to load configuration from a `.env` file.
+- How to separate LLM communication from CLI logic.
+- How to define custom exceptions.
+- How exception chaining works.
+- How to handle errors in a Typer command.
+- Why CLI applications should return a non-zero exit code when a command fails.
 
-## What's next?
+## Conclusion
 
-We now have a working CLI built with Typer.
+Our terminal assistant can now communicate with a real local LLM.
 
-In the next stage, we'll continue improving our terminal assistant and move closer to our original goal: an assistant that can communicate with a local LLM through Ollama.
+We've built the CLI step by step, from plain Python to a packaged Typer application connected to Ollama.

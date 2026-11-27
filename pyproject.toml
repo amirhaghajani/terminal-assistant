@@ -7,9 +7,10 @@ name = "terminal-assistant"
 version = "0.2.0"
 description = "A simple terminal assistant"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
-    "typer>=0.29.2,<1.0.0"
+    "python-dotenv>=1.2.4",
+    "typer>=0.29.2,<1.0.0",
 ]
 
 [project.scripts]

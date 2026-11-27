@@ -1,5 +1,6 @@
 from pathlib import Path
 import typer
+from terminal_assistant.llm import ask_ollama, OllamaError
 
 app = typer.Typer(
     help="A simple terminal assistant",
@@ -8,12 +9,16 @@ app = typer.Typer(
 
 
 def answer_question(question: str) -> str:
-    return f"I received your question: {question}"
+    return ask_ollama(question)
 
 
 @app.command("ask")
 def ask(question: str):
-    print(answer_question(question))
+    try:
+        print(answer_question(question))
+    except OllamaError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(code=1)
 
 @app.command("create-file")
 def create_file(filename: str, content: str) -> None:
