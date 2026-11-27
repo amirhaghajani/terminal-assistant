@@ -87,4 +87,6 @@ The commands should continue working after the upgrade.
 
 ## What's next?
 
-In stage 6, we'll improve the CLI implementation and explore a more convenient way to define commands and arguments.
+In Stage 6, we'll step back from CLI development and explore some important Python fundamentals: functions as objects, passing functions as arguments, returning functions, and decorators.
+
+These concepts will help us understand how Python frameworks such as Typer register CLI commands and their arguments.
