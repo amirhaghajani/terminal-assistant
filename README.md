@@ -1,196 +1,424 @@
-# Terminal Assistant
+# Stage 7 — Building a CLI with Typer
 
-A small Python project that gradually evolves into an installable command-line application.
+In the previous stages, we built a command-line application using plain Python, manual argument parsing, and `argparse`. We also explored Python functions, function references, decorators, and function registration.
 
-This is **Stage 6: Understanding Python Functions and Decorators**.
+In this stage, we'll use **Typer** to build the CLI.
 
-Before introducing Typer, we'll explore the Python concepts that make decorator-based frameworks possible.
+Our goal is to achieve the same functionality with less boilerplate and a more Pythonic approach.
 
-This stage is written for learners who may have experience in other programming languages but aren't yet familiar with Python's function objects, decorators, and function registration.
+## 1. What are we building?
 
-## What's new?
+Our terminal assistant supports these commands:
 
-In this stage, we explore:
+```bash
+assistant --help
 
-- Functions as objects.
-- Assigning functions to variables.
-- Passing functions as arguments.
-- Returning functions from other functions.
-- Registering functions in a dictionary.
-- Wrapper functions and closures.
-- Decorator syntax (`@`).
-- Decorator factories (`@command()`).
-- The difference between returning the original function and returning a wrapper.
+assistant ask "What is RAG?"
 
-## Project structure
+assistant create-file notes.txt "Hello from Typer"
+```
+
+Expected output:
 
 ```text
-terminal-assistant/
-├── examples/
-│   ├── decorators.py
-│   ├── decorator_wrapper.py
-│   ├── decorator_syntax.py
-│   ├── decorator_factory.py
-│   └── decorator_registration.py
-├── pyproject.toml
-├── README.md
-└── src/
-    └── terminal_assistant/
-        ├── __init__.py
-        └── cli.py
+I received your question: What is RAG?
 ```
 
-Each file in `examples/` demonstrates a separate concept. Run them independently and experiment with the code.
-
-## 1. Functions are objects
-
-In Python, functions are objects. This means we can assign a function to another variable and call it through that variable.
-
-```python
-def say_hello():
-    print("Hello!")
-
-x = say_hello
-x()
-```
-
-Output:
+For file creation:
 
 ```text
-Hello!
+file created: notes.txt
 ```
 
-Notice the difference:
+## 2. Why Typer?
 
-- `say_hello` refers to the function itself.
-- `say_hello()` executes the function.
-
-When we write `x = say_hello`, we don't execute the function. We assign a reference to the same function object.
-
-Example: `examples/decorators.py`
-
-## 2. Passing functions as arguments
-
-A function can receive another function as an argument.
-
-```python
-def register(func):
-    print("Registering:", func.__name__)
-
-def ask():
-    print("Question")
-
-register(ask)
-```
-
-Output:
-
-```text
-Registering: ask
-```
-
-Here, `func` refers to the original `ask` function.
-
-The `__name__` attribute allows us to inspect the function's name.
-
-Example: `examples/decorators.py`
-
-## 3. Returning functions
-
-A function can return another function or return the original function it received.
+Before Typer, we used `argparse` to define commands and their arguments.
 
 For example:
 
 ```python
-def register(func):
-    print("Registering:", func.__name__)
-    return func
+ask_parser = subparsers.add_parser(
+    name="ask",
+    help="Ask a question"
+)
 
-def ask():
-    print("Question")
+ask_parser.add_argument("question")
+```
 
-ask = register(ask)
-ask()
+We had to explicitly define the command and its arguments.
+
+With Typer, we can express the same information using Python functions and decorators:
+
+```python
+@app.command("ask")
+def ask(question: str):
+    print(f"I received your question: {question}")
+```
+
+Typer uses the function name, parameters, and type hints to construct the command-line interface.
+
+## 3. Installing Typer
+
+Add Typer to the project's dependencies in `pyproject.toml`:
+
+```toml
+[project]
+dependencies = [
+    "typer>=0.29.2,<1.0.0"
+]
+```
+
+Install the project in editable mode:
+
+```bash
+python -m pip install -e .
+```
+
+Editable installation means that changes to our Python source files are immediately available without reinstalling the package.
+
+## 4. Understanding the application
+
+Our application is defined in:
+
+`src/terminal_assistant/cli.py`
+
+```python
+from pathlib import Path
+import typer
+
+app = typer.Typer(
+    help="A simple terminal assistant",
+    context_settings={"help_option_names": ["-h", "--help"]}
+)
+
+
+def answer_question(question: str) -> str:
+    return f"I received your question: {question}"
+
+
+@app.command("ask")
+def ask(question: str):
+    print(answer_question(question))
+
+
+@app.command("create-file")
+def create_file(filename: str, content: str) -> None:
+    path = Path(filename)
+
+    with path.open(mode="a", encoding="utf-8") as f:
+        f.write(content + "\n")
+
+    print(f"file created: {path}")
+
+
+def main():
+    app()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Let's understand the important parts.
+
+### Creating the Typer application
+
+```python
+app = typer.Typer(
+    help="A simple terminal assistant"
+)
+```
+
+This creates our CLI application.
+
+We use `app` to register commands.
+
+### Registering a command
+
+```python
+@app.command("ask")
+def ask(question: str):
+    print(answer_question(question))
+```
+
+The decorator registers the `ask` function as a CLI command.
+
+The command name is explicitly specified as `"ask"`.
+
+Typer reads the function signature and understands that `question` is a required string argument.
+
+We can now execute:
+
+```bash
+assistant ask "What is RAG?"
+```
+
+### Understanding the decorator
+
+We previously learned that:
+
+```python
+@app.command()
+def ask(question: str):
+    ...
+```
+
+is conceptually similar to:
+
+```python
+def ask(question: str):
+    ...
+
+ask = app.command()(ask)
+```
+
+`app.command()` returns a decorator. That decorator receives the `ask` function and registers it with the application.
+
+The actual Typer implementation is more sophisticated, but this model helps us understand the registration mechanism.
+
+### Separating business logic from CLI interaction
+
+Notice that we have two functions:
+
+```python
+def answer_question(question: str) -> str:
+    return f"I received your question: {question}"
+```
+
+And:
+
+```python
+@app.command("ask")
+def ask(question: str):
+    print(answer_question(question))
+```
+
+`answer_question` contains business logic. It returns a string.
+
+`ask` handles the CLI interaction and displays the result.
+
+This separation is useful because we can later replace the placeholder implementation with an actual LLM call without coupling our business logic to Typer.
+
+## 5. How Typer interprets function parameters
+
+One of Typer's most useful features is that it uses Python type hints and default values to define CLI arguments and options.
+
+Consider:
+
+```python
+@app.command()
+def calculate(
+    price: float,
+    quantity: int,
+    discount: bool = False
+):
+    print(price, quantity, discount)
+```
+
+Typer interprets the parameters as follows:
+
+| Python parameter | CLI behavior |
+|---|---|
+| `price: float` | Required positional argument |
+| `quantity: int` | Required positional argument |
+| `discount: bool = False` | Optional Boolean flag |
+
+Without the discount flag:
+
+```bash
+assistant calculate 12.5 3
 ```
 
 Output:
 
 ```text
-Registering: ask
-Question
+12.5 3 False
 ```
 
-Let's understand this assignment:
+With the discount flag:
 
-```python
-ask = register(ask)
-```
-
-1. The original `ask` function is passed to `register`.
-2. `register` receives it through `func`.
-3. `return func` returns the original function.
-4. The returned function is assigned back to `ask`.
-
-The name `ask` still refers to the original function.
-
-Example: `examples/decorators.py`
-
-## 4. Wrapper functions
-
-A wrapper is a function that calls another function and adds behavior before or after that call.
-
-```python
-def register(func):
-    print("Registering:", func.__name__)
-
-    def wrapper():
-        print("Before")
-        func()
-        print("After")
-
-    return wrapper
-
-
-def ask():
-    print("Question")
-
-
-ask = register(ask)
-
-ask()
+```bash
+assistant calculate 12.5 3 --discount
 ```
 
 Output:
 
 ```text
-Registering: ask
-Before
-Question
-After
+12.5 3 True
 ```
 
-The important difference is:
+### Positional arguments and options
+
+Consider:
 
 ```python
-return wrapper
+def download(url: str, output: str = "download.zip"):
+    print(url, output)
 ```
 
-Instead of returning the original function, we return a new function.
+Because `url` has no default value, Typer treats it as a required positional argument.
 
-Therefore:
+Because `output` has a default value, Typer treats it as an option.
+
+These commands are valid:
+
+```bash
+assistant download https://example.com
+
+assistant download https://example.com --output file.zip
+```
+
+By default, the option name comes from the parameter name. For example, `has_discount` becomes `--has-discount`.
+
+You can also explicitly configure arguments and options using `typer.Argument()` and `typer.Option()`.
+
+## 6. Automatic type conversion and validation
+
+Type hints are not just documentation.
+
+Consider:
 
 ```python
-ask = register(ask)
+def calculate(price: float, quantity: int):
+    print(price * quantity)
 ```
 
-makes the name `ask` refer to `wrapper`.
+When we execute:
 
-Inside `wrapper`, `func()` still calls the original function.
+```bash
+assistant calculate 12.5 3
+```
 
-### What is a closure?
+Typer converts the terminal input into the appropriate Python types:
 
-The inner function `wrapper` uses the variable `func` from the surrounding function `register`.
+```python
+price = 12.5       # float
+quantity = 3       # int
+```
 
-Even after `register` finishes executing, `wrapper` can still access `func`.
+But if we execute:
 
-This behavior is called a **closure
+```bash
+assistant calculate 12.5 three
+```
+
+Typer rejects the invalid integer input before calling our function.
+
+This means we don't have to manually convert every command-line argument or write basic type-validation logic ourselves.
+
+## 7. Understanding Click
+
+Typer is built on Click's command-line infrastructure.
+
+Click provides functionality for:
+
+- Command-line argument parsing
+- Commands and groups
+- Options and arguments
+- Help generation
+- Shell completion
+
+Typer provides a more convenient Python interface by using function signatures, decorators, and type hints.
+
+Instead of explicitly declaring every CLI argument, we can often describe our command using an ordinary Python function.
+
+One detail about our installed version: Typer 0.29.2 vendors Click internally.
+
+## 8. Customizing help options
+
+By default, our previous `argparse` implementation supported both:
+
+```bash
+assistant -h
+assistant --help
+```
+
+Our Typer application initially supported `--help`, but not `-h`.
+
+We configured both options using:
+
+```python
+app = typer.Typer(
+    help="A simple terminal assistant",
+    context_settings={
+        "help_option_names": ["-h", "--help"]
+    }
+)
+```
+
+Now both commands work.
+
+## 9. Why do we keep `main()`?
+
+Our `pyproject.toml` contains:
+
+```toml
+[project.scripts]
+assistant = "terminal_assistant.cli:main"
+```
+
+This tells the Python packaging system to create an executable command named `assistant` that calls the `main` function.
+
+Our entry point is:
+
+```python
+def main():
+    app()
+```
+
+We could call `app()` directly, but keeping `main()` preserves the existing package entry point.
+
+## 10. Running the application
+
+Install the project:
+
+```bash
+python -m pip install -e .
+```
+
+Display application help:
+
+```bash
+assistant --help
+assistant -h
+```
+
+Display command help:
+
+```bash
+assistant ask --help
+assistant create-file --help
+```
+
+Ask a question:
+
+```bash
+assistant ask "What is RAG?"
+```
+
+Create a file:
+
+```bash
+assistant create-file notes.txt "Hello from Typer"
+```
+
+## 11. What did we learn?
+
+In this stage, we learned:
+
+- Creating a Typer application.
+- Registering commands with decorators.
+- Understanding how `@app.command()` works.
+- Using Python function parameters as CLI arguments.
+- Understanding positional arguments and options.
+- Using Boolean parameters as CLI flags.
+- Automatic type conversion and validation.
+- The relationship between Typer and Click.
+- Customizing CLI help options.
+- Preserving our Python package entry point.
+
+## What's next?
+
+We now have a working CLI built with Typer.
+
+In the next stage, we'll continue improving our terminal assistant and move closer to our original goal: an assistant that can communicate with a local LLM through Ollama.
